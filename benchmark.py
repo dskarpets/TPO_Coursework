@@ -8,14 +8,22 @@ from vocabulary import VOCAB
 
 SIZES = [500, 1_000, 2_000, 5_000, 10_000, 20_000]
 WORKER_COUNTS = [2, 4, 8, 10, 12, 16]
-WORDS_PER_DOC = 500
+WORDS_PER_DOC = 1_000
 RUNS = 20
+WORD_COUNTS = [100, 500, 1_000, 2_000, 5_000]
+DOCS_FOR_WORD_BENCH = 5_000
 
 
-def generate_corpus(n_docs: int, words_per_doc: int = 500, seed: int = 42) -> list[str]:
+def generate_corpus(n_docs: int, words_per_doc: int = 2_000, seed: int = 42) -> list[str]:
     rng = random.Random(seed)
 
     return [" ".join(rng.choices(VOCAB, k=words_per_doc)) for _ in range(n_docs)]
+
+
+def generate_unequal_corpus(n_docs: int, seed: int = 42) -> list[str]:
+    rng = random.Random(seed)
+    lengths = [rng.randint(50, 5_000) for _ in range(n_docs)]
+    return [" ".join(rng.choices(VOCAB, k=l)) for l in lengths]
 
 
 def measure(func, *args, runs: int = RUNS) -> float:
@@ -44,11 +52,12 @@ def run_correctness_tests() -> None:
          ["the cat sat on the mat",
           "the dog sat on the log",
           "the cat and the dog are friends"]),
-        ("one document", ["only one document here with words"]),
-        ("identical documents", ["hello world hello"] * 5),
-        ("1000 docs x 500 words", generate_corpus(1_000, 500)),
-        ("5000 docs x 500 words", generate_corpus(5_000, 500)),
-        ("10000 docs x 500 words", generate_corpus(10_000, 500)),
+        ("one document",           ["only one document here with words"]),
+        ("identical documents",    ["hello world hello"] * 5),
+        ("1000 docs x 2000 words", generate_corpus(1_000, 2_000)),
+        ("5000 docs x 2000 words", generate_corpus(5_000, 2_000)),
+        ("10000 docs x 2000 words",generate_corpus(10_000, 2_000)),
+        ("unequal doc lengths (1000 docs)", generate_unequal_corpus(1_000)),
     ]
     all_ok = True
     for name, texts in cases:
@@ -93,7 +102,40 @@ def run_benchmark() -> None:
         print()
 
 
+def run_words_per_doc_benchmark() -> None:
+    best_workers = min(os.cpu_count() or 4, 12)
+    print(f"EFFECT OF DOCUMENT SIZE  ({DOCS_FOR_WORD_BENCH} docs, {best_workers} workers)")
+    print("-" * 55)
+    print(f"{'words/doc':>10}  {'seq (s)':>10}  {'par (s)':>10}  {'speedup':>9}")
+    print("-" * 55)
+    for wpd in WORD_COUNTS:
+        corpus = generate_corpus(DOCS_FOR_WORD_BENCH, wpd)
+        t_seq = measure(run_sequential, corpus)
+        t_par = measure(run_parallel, corpus, best_workers)
+        sp = t_seq / t_par if t_par > 0 else float("inf")
+        print(f"{wpd:>10}  {t_seq:>10.3f}  {t_par:>10.3f}  {sp:>9.2f}x")
+    print()
+
+
+def run_unequal_benchmark() -> None:
+    best_workers = min(os.cpu_count() or 4, 12)
+    print(f"EQUAL VS UNEQUAL DOCUMENT LENGTHS  (5000 docs, {best_workers} workers)")
+    print("-" * 55)
+    print(f"{'corpus':>10}  {'seq (s)':>10}  {'par (s)':>10}  {'speedup':>9}")
+    print("-" * 55)
+    equal = generate_corpus(5_000, 2_000)
+    unequal = generate_unequal_corpus(5_000)
+    for label, corpus in [("equal", equal), ("unequal", unequal)]:
+        t_seq = measure(run_sequential, corpus)
+        t_par = measure(run_parallel, corpus, best_workers)
+        sp = t_seq / t_par if t_par > 0 else float("inf")
+        print(f"{label:>10}  {t_seq:>10.3f}  {t_par:>10.3f}  {sp:>9.2f}x")
+    print()
+
+
 if __name__ == "__main__":
     print(f"CPU cores: {os.cpu_count()}\n")
     run_correctness_tests()
     run_benchmark()
+    run_words_per_doc_benchmark()
+    run_unequal_benchmark()

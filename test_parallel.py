@@ -1,13 +1,20 @@
 from tfidf_sequential import run_sequential
 from tfidf_parallel import run_parallel
+from vocabulary import VOCAB
+import random
 
-docs = [
-    "parallel calculation in python",
-    "multiprocessing in python",
-    "parallel and multiprocessing in general programming",
-]
+WORKER_COUNTS = [2, 4, 8, 10, 12, 16]
 
-WORKER_COUNTS = [1, 2, 3, 4, 6, 8]
+
+def generate_corpus(n_docs, words_per_doc=500, seed=42):
+    rng = random.Random(seed)
+    return [" ".join(rng.choices(VOCAB, k=words_per_doc)) for _ in range(n_docs)]
+
+
+def generate_unequal_corpus(n_docs, seed=42):
+    rng = random.Random(seed)
+    lengths = [rng.randint(50, 2000) for _ in range(n_docs)]
+    return [" ".join(rng.choices(VOCAB, k=l)) for l in lengths]
 
 
 def results_are_equal(a, b, tol=1e-9):
@@ -23,27 +30,14 @@ def results_are_equal(a, b, tol=1e-9):
 
 
 if __name__ == '__main__':
-    seq_res, _ = run_sequential(docs)
+    sizes = [1_000, 5_000, 10_000]
 
-    print("Comparison: parallel vs sequential")
-    print(f"  {'workers':>8}  {'result':>6}")
-    print("  " + "-" * 20)
-    for w in WORKER_COUNTS:
-        par_res, _ = run_parallel(docs, w)
-        ok = results_are_equal(seq_res, par_res)
-        print(f"  {w:>8}  {'OK' if ok else 'FAIL':>6}")
-
-    print("\nDetailed comparison (workers=4)")
-    par_res4, _ = run_parallel(docs, 4)
-    all_ok = True
-    for i, (s, p) in enumerate(zip(seq_res, par_res4)):
-        print(f"  doc{i}:")
-        for word in sorted(s):
-            sv, pv = s[word], p[word]
-            match = abs(sv - pv) < 1e-9
-            if not match:
-                all_ok = False
-            print(f"    {word:20s}  seq={sv:.6f}  par={pv:.6f}  {'OK' if match else 'MISMATCH'}")
-
-    print()
-    print("All results match." if all_ok else "Error! Results do not match.")
+    print("Parallel vs sequential")
+    for n in sizes:
+        corpus = generate_corpus(n)
+        seq_res, _ = run_sequential(corpus)
+        print(f"  {n} docs:")
+        for w in WORKER_COUNTS:
+            par_res, _ = run_parallel(corpus, w)
+            ok = results_are_equal(seq_res, par_res)
+            print(f"    {w} workers  {'OK' if ok else 'FAIL'}")
